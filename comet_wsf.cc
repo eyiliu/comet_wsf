@@ -153,6 +153,7 @@ uint32_t *pR_DAQB_VBASE32 = 0;
 
 
 void daqb_reg_write(uint32_t o, uint32_t d, uint32_t* vbase){
+  std::printf("writing DAQB register:  %#010x @ %#010x \n", d, o);
   *(vbase+o) = d;
 }
 
@@ -180,8 +181,8 @@ uint32_t daqb_reg_read(uint32_t o){
 
 
 void feb_cmd_write(uint16_t a, uint16_t d){
-  uint32_t cmd = a<<16 + d;
-  std::printf("writing DAQB register:  %#010x @ %#010x \n", d, a);
+  uint32_t cmd = ((uint32_t(a))<<16) + d;
+  std::printf("writing FEB register: %#010x @ %#010x \n", d, a);
   daqb_reg_write(R_DAQB_CMD_HADDR_LDATA, cmd);
 }
 
@@ -203,7 +204,7 @@ void daqb_wait_for_ack_cnt(uint32_t last_cnt){
       std::printf("timetout: last ack cnt %#010x,  %#010x \n", last_cnt, cnt_new);
       throw;
     }
-    std::this_thread::sleep_for(20ms);
+    std::this_thread::sleep_for(100ms);
     cnt_new = daqb_reg_read(R_DAQB_CMD_ACK);
   }
 }
@@ -216,14 +217,40 @@ double feb_read_new_temp(){
   uint32_t temp_ascii = daqb_reg_read(R_DAQB_TEMP);
   std::printf("temp raw new %#010x, last %#010x \n", temp_ascii, last_temp_ascii);
 
+  if(temp_ascii==0 || temp_ascii==-1){
+    std::printf("temp readback is incorrect\n");
+    return 0;
+  }
   std::string temp_str(reinterpret_cast<const char*>(&temp_ascii), 4);
+  std::printf("temp hex 0X%s\n", temp_str);
+
   uint32_t temp_div =  std::stoul(temp_str, 0, 16);
   double temp = temp_div * U_TEMP_C_PER;
 
-  std::printf("temp new   %u * U_TEMP_C_PER = %f Celsius \n", temp_div, temp);
+  std::printf("temp   %u * U_TEMP_C_PER = %f Celsius \n", temp_div, temp);
 
   return temp;
 }
+
+
+
+double feb_read_hv(){
+  uint32_t hv_ascii = daqb_reg_read(R_DAQB_HVOLT);
+  std::printf("hvolt raw %#010x\n", hv_ascii);
+
+  if(hv_ascii==0 || hv_ascii==-1){
+    std::printf("hvolt readback is incorrect\n");
+    return 0;
+  }
+  std::string hv_str(reinterpret_cast<const char*>(&hv_ascii), 4);
+  uint32_t hv_div =  std::stoul(hv_str, 0, 16);
+  double hv = hv_div * U_HVOLT_V_PER;
+
+  std::printf("hvolt  %u * U_HVOLT_V_PER = %f Volt \n", hv_div, hv);
+
+  return hv;
+}
+
 
 
 void feb_set_hv_voltage(double v){
@@ -242,11 +269,6 @@ void feb_set_hv_voltage(double v){
 
 void feb_set_hv_raw(){
   // TODO
-}
-
-void feb_read_hv_raw(){
-  uint32_t hvolt_raw = R_DAQB_HVOLT;
-  std::printf("hvolt raw %#010x \n", hvolt_raw);
 }
 
 void feb_set_dac_voltage(uint32_t ch, double v){
@@ -312,24 +334,29 @@ example:
   1) quit command line
    > quit
 
-  2) get daqb regiester
+  2) get DAQB regiester
    > daqb get raw [nAddress]
 
-  3) set daqb regiester
+  3) set DAQB regiester
    > daqb set raw [nAddress] [nData]
 
   4) set FEB register
    > feb set raw [nAddress] [nData]
 
-  5) get temp module Celsius
+  5) get FEB TEMP module Celsius
    > temp get
 
-  6) set&push FEB DAC voltage
+  6) set&push FEB DAC module Voltage
    > dac set [nChannel] [nVolt]
 
-  7) set&push FEB ASIC raw configure
+  7) set&push FEB ASIC module raw configure
    > asic set raw [nChannel] [nData]
 
+  8) get FEB HVOLT module Voltage
+   > hvolt get
+
+  9) set&push FEB HVOLT module Voltage
+   >
 )"
  );
 
@@ -366,7 +393,7 @@ int main(int argc, char **argv){
   linenoiseSetCompletionCallback([](const char* prefix, linenoiseCompletions* lc)
                                  {
                                    static const char* examples[] =
-                                     {"help", "print", "init", "reset", "quit", "daqb", "feb", "set", "get", "cmd", "hvolt", "dac", "temp", "asic", "raw", "volt",
+                                     {"help", "print", "init", "reset", "quit", "exit", "daqb", "feb", "set", "get", "cmd", "hvolt", "dac", "temp", "asic", "raw", "volt",
                                       NULL};
                                    size_t i;
                                    for (i = 0;  examples[i] != NULL; ++i) {
@@ -385,7 +412,7 @@ int main(int argc, char **argv){
     if ( std::regex_match(result, std::regex("\\s*(help)\\s*")) ){
       fprintf(stdout, "%s", help_usage_linenoise.c_str());
     }
-    else if ( std::regex_match(result, std::regex("\\s*(quit)\\s*")) ){
+    else if ( std::regex_match(result, std::regex("\\s*(quit|exit)\\s*")) ){
       printf("quiting \n");
       linenoiseHistoryAdd(result);
       free(result);
@@ -399,7 +426,6 @@ int main(int argc, char **argv){
       printf("init TODO\n");
       //TODO
     }
-
     else if ( std::regex_match(result, std::regex("\\s*(daqb)\\s+(set)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
       std::cmatch mt;
       std::regex_match(result, mt, std::regex("\\s*(daqb)\\s+(set)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*"));
@@ -407,13 +433,12 @@ int main(int argc, char **argv){
       uint64_t data = std::stoull(mt[7].str(), 0, mt[6].str().empty()?10:16);
       daqb_reg_write(addr, data);
     }
-    else if ( std::regex_match(result, std::regex("\\s*(daqb)\\s+(get)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))    )\\s*")) ){
+    else if ( std::regex_match(result, std::regex("\\s*(daqb)\\s+(get)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
       std::cmatch mt;
       std::regex_match(result, mt, std::regex("\\s*(daqb)\\s+(get)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*"));
       uint64_t addr = std::stoull(mt[5].str(), 0, mt[4].str().empty()?10:16);
       daqb_reg_read(addr);
     }
-
     else if ( std::regex_match(result, std::regex("\\s*(feb)\\s+(set)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
       std::cmatch mt;
       std::regex_match(result, mt, std::regex("\\s*(feb)\\s+(set)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*"));
@@ -424,7 +449,9 @@ int main(int argc, char **argv){
     else if ( std::regex_match(result, std::regex("\\s*(temp)\\s+(get)\\s*")) ){
       feb_read_new_temp();
     }
-
+    else if ( std::regex_match(result, std::regex("\\s*(hvolt)\\s+(get)\\s*")) ){
+      feb_read_hv();
+    }
     else if ( std::regex_match(result, std::regex("\\s*(dac)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
       std::cmatch mt;
       std::regex_match(result, mt, std::regex("\\s*(dac)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*"));
@@ -432,7 +459,6 @@ int main(int argc, char **argv){
       uint64_t voltage = std::stoull(mt[6].str(), 0, mt[5].str().empty()?10:16);
       feb_set_dac_voltage(ch, voltage);
     }
-
     else if ( std::regex_match(result, std::regex("\\s*(asic)\\s+(set)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
       std::cmatch mt;
       std::regex_match(result, mt, std::regex("\\s*(asic)\\s+(set)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*"));
@@ -440,7 +466,6 @@ int main(int argc, char **argv){
       uint64_t data = std::stoull(mt[7].str(), 0, mt[6].str().empty()?10:16);
       feb_set_asic_raw(ch, data);
     }
-
     else{
       std::printf("Error, unknown command:    %s\n", result);
     }
