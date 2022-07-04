@@ -260,8 +260,8 @@ void feb_set_hv_voltage(double v){
   char hvset_l = (hvseti & 0x00ff);
   std::string hvset_hs = CStringToHexString(&hvset_h, 1);
   std::string hvset_ls = CStringToHexString(&hvset_l, 1);
-  uint16_t hvset_hi = (uint16_t(uint8_t(hvset_hs[0])))<<8 + (uint16_t(uint8_t(hvset_hs[1])));
-  uint16_t hvset_li = (uint16_t(uint8_t(hvset_ls[0])))<<8 + (uint16_t(uint8_t(hvset_ls[1])));
+  uint16_t hvset_hi = ((uint16_t(uint8_t(hvset_hs[0])))<<8) + (uint16_t(uint8_t(hvset_hs[1])));
+  uint16_t hvset_li = ((uint16_t(uint8_t(hvset_ls[0])))<<8) + (uint16_t(uint8_t(hvset_ls[1])));
 
   double temp = feb_read_new_temp();
 
@@ -273,7 +273,7 @@ void feb_set_hv_raw(){
 
 void feb_set_dac_voltage(uint32_t ch, double v){
   uint32_t v_raw = lrint(v/U_DAC_V_PER);
-  uint32_t data_raw = (ch & 0xff) << 12 + (v_raw & 0xffffff);
+  uint32_t data_raw = ((ch & 0xf) << 12) + (v_raw & 0xfff);
 
   uint32_t last_ack_cnt;
   last_ack_cnt = daqb_read_last_ack_cnt();
