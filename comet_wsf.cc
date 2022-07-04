@@ -18,7 +18,7 @@
 #include <sys/mman.h>
 
 #include <signal.h>
-
+#include <arpa/inet.h>
 
 #include "linenoise.h"
 
@@ -116,7 +116,6 @@ namespace{
 
 
 
-
 #define R_DAQB_PBASE    0x43c00000
 #define D_DAQB_PSIZE    0x100
 
@@ -127,7 +126,6 @@ namespace{
 #define R_DAQB_TEMP             0x10
 #define R_DAQB_HVOLT            0x14
 
-#define U_TEMP_C_PER            0.0078125
 #define U_DAC_V_PER             0.0008059
 #define U_HVOLT_V_PER           0.001812
 
@@ -154,12 +152,14 @@ uint32_t *pR_DAQB_VBASE32 = 0;
 
 void daqb_reg_write(uint32_t o, uint32_t d, uint32_t* vbase){
   std::printf("writing DAQB register:  %#010x @ %#010x \n", d, o);
-  *(vbase+o) = d;
+
+  uint32_t *p_target = (uint32_t*)(((char*)vbase) +o);
+  *p_target = d;
 }
 
 
 uint32_t daqb_reg_read(uint32_t o, uint32_t* vbase){
-  uint32_t data =  *(vbase+o);
+  uint32_t data =  *((uint32_t*)(((char*)vbase) +o));
   if(o==R_DAQB_CMD_ACK){
     std::printf("monitoring DAQB ACK:  %#010x @ %#010x \n", data, o);
   }
@@ -215,23 +215,27 @@ double feb_read_new_temp(){
   feb_cmd_write(R_FEB_TEMP_FETCH, 1);
   daqb_wait_for_ack_cnt(last_cmd_ack_cnt);
   uint32_t temp_ascii = daqb_reg_read(R_DAQB_TEMP);
+  if(DEBUG_OFFLINE){
+    temp_ascii = 0x42383235;
+  }
   std::printf("temp raw new %#010x, last %#010x \n", temp_ascii, last_temp_ascii);
 
   if(temp_ascii==0 || temp_ascii==-1){
     std::printf("temp readback is incorrect\n");
     return 0;
   }
+
   std::string temp_str(reinterpret_cast<const char*>(&temp_ascii), 4);
-  std::printf("temp hex 0X%s\n", temp_str);
+  std::string temp_str_revert(temp_str.rbegin(), temp_str.rend());
+  std::printf("temp hex 0X%s\n", temp_str_revert.c_str());
 
-  uint32_t temp_div =  std::stoul(temp_str, 0, 16);
-  double temp = temp_div * U_TEMP_C_PER;
+  uint32_t temp_div =  std::stoul(temp_str_revert, 0, 16);
+  double temp = (temp_div * 0.00001907-1.035)/(-0.0055);
 
-  std::printf("temp   %u * U_TEMP_C_PER = %f Celsius \n", temp_div, temp);
+  std::printf("temp   (%u * 0.00001907 - 1.035)/(-0.0055) = %f Celsius \n", temp_div, temp);
 
   return temp;
 }
-
 
 
 double feb_read_hv(){
@@ -243,7 +247,10 @@ double feb_read_hv(){
     return 0;
   }
   std::string hv_str(reinterpret_cast<const char*>(&hv_ascii), 4);
-  uint32_t hv_div =  std::stoul(hv_str, 0, 16);
+  std::string hv_str_revert(hv_str.rbegin(), hv_str.rend());
+
+  std::printf("hvolt hex 0X%s\n", hv_str_revert.c_str());
+  uint32_t hv_div =  std::stoul(hv_str_revert, 0, 16);
   double hv = hv_div * U_HVOLT_V_PER;
 
   std::printf("hvolt  %u * U_HVOLT_V_PER = %f Volt \n", hv_div, hv);
@@ -252,24 +259,64 @@ double feb_read_hv(){
 }
 
 
-
 void feb_set_hv_voltage(double v){
-  // TODO, assuming positive only
   uint16_t hvseti = lrint(v/U_HVOLT_V_PER);
-  char hvset_h = (hvseti>>8 & 0x00ff);
+  std::printf("hvolt conf voltage:  %f / U_HVOLT_V_PER  = %u, hex %#06x \n", v, hvseti, hvseti);
+
+  char hvset_h = ((hvseti>>8) & 0x00ff);
   char hvset_l = (hvseti & 0x00ff);
   std::string hvset_hs = CStringToHexString(&hvset_h, 1);
   std::string hvset_ls = CStringToHexString(&hvset_l, 1);
   uint16_t hvset_hi = ((uint16_t(uint8_t(hvset_hs[0])))<<8) + (uint16_t(uint8_t(hvset_hs[1])));
   uint16_t hvset_li = ((uint16_t(uint8_t(hvset_ls[0])))<<8) + (uint16_t(uint8_t(hvset_ls[1])));
+  std::printf("hvolt conf VH, VL:  %#06x, %#06x\n", hvset_hi, hvset_li);
 
+  uint32_t last_ack_cnt;
+  last_ack_cnt = daqb_read_last_ack_cnt();
+  feb_cmd_write(R_FEB_HVOLT_REF_VH, hvset_hi);
+  daqb_wait_for_ack_cnt(last_ack_cnt);
+
+  last_ack_cnt = daqb_read_last_ack_cnt();
+  feb_cmd_write(R_FEB_HVOLT_REF_VL, hvset_li);
+  daqb_wait_for_ack_cnt(last_ack_cnt);
+
+
+  std::printf("hvolt reading new temp\n");
   double temp = feb_read_new_temp();
+  uint16_t tempref_div = lrint( (1.035+ (temp*(-0.0055)))/0.00001907 );
+  std::printf("hvolt conf tempref:  (1.035+ ( %f *(-0.0055)))/0.00001907) = %u, hex %#06x \n", temp, tempref_div, tempref_div);
+
+  char tempref_h = ((tempref_div>>8) & 0x00ff);
+  char tempref_l = (tempref_div & 0x00ff);
+  std::string tempref_hs = CStringToHexString(&tempref_h, 1);
+  std::string tempref_ls = CStringToHexString(&tempref_l, 1);
+  uint16_t tempref_hi = ((uint16_t(uint8_t(tempref_hs[0])))<<8) + (uint16_t(uint8_t(tempref_hs[1])));
+  uint16_t tempref_li = ((uint16_t(uint8_t(tempref_ls[0])))<<8) + (uint16_t(uint8_t(tempref_ls[1])));
+  std::printf("hvolt conf TH, TL:  %#06x, %#06x, %#06x, %#06x \n", tempref_hi, tempref_li);
+
+  last_ack_cnt = daqb_read_last_ack_cnt();
+  feb_cmd_write(R_FEB_HVOLT_REF_TH, tempref_hi);
+  daqb_wait_for_ack_cnt(last_ack_cnt);
+
+  last_ack_cnt = daqb_read_last_ack_cnt();
+  feb_cmd_write(R_FEB_HVOLT_REF_TL, tempref_li);
+  daqb_wait_for_ack_cnt(last_ack_cnt);
+
+
+
+  //todo
+  // uint16_t hv_checksum=0;
+  // last_ack_cnt = daqb_read_last_ack_cnt();
+  // feb_cmd_write(R_FEB_HVOLT_CHECKSUM, hv_checksum);
+  // daqb_wait_for_ack_cnt(last_ack_cnt);
+
+
+  // last_ack_cnt = daqb_read_last_ack_cnt();
+  // feb_cmd_write(R_FEB_HVOLT_CONF_PUSH, 1);
+  // daqb_wait_for_ack_cnt(last_ack_cnt);
 
 }
 
-void feb_set_hv_raw(){
-  // TODO
-}
 
 void feb_set_dac_voltage(uint32_t ch, double v){
   uint32_t v_raw = lrint(v/U_DAC_V_PER);
@@ -281,7 +328,7 @@ void feb_set_dac_voltage(uint32_t ch, double v){
   daqb_wait_for_ack_cnt(last_ack_cnt);
 
   last_ack_cnt = daqb_read_last_ack_cnt();
-  feb_cmd_write(R_FEB_DAC_CONF, 1);
+  feb_cmd_write(R_FEB_DAC_CONF_PUSH, 1);
   daqb_wait_for_ack_cnt(last_ack_cnt);
 }
 
@@ -356,7 +403,7 @@ example:
    > hvolt get
 
   9) set&push FEB HVOLT module Voltage
-   >
+   > hvolt set [nVolt]
 )"
  );
 
@@ -465,6 +512,13 @@ int main(int argc, char **argv){
       uint64_t ch = std::stoull(mt[5].str(), 0, mt[4].str().empty()?10:16);
       uint64_t data = std::stoull(mt[7].str(), 0, mt[6].str().empty()?10:16);
       feb_set_asic_raw(ch, data);
+    }
+    else if ( std::regex_match(result, std::regex("\\s*(hvolt)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
+      std::cmatch mt;
+      std::regex_match(result, mt, std::regex("\\s*(hvolt)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*"));
+      uint64_t voltage = std::stoull(mt[4].str(), 0, mt[3].str().empty()?10:16);
+      std::printf("Warning: not yet finished, no checksum\n");
+      feb_set_hv_voltage(voltage);
     }
     else{
       std::printf("Error, unknown command:    %s\n", result);
