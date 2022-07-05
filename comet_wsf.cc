@@ -302,18 +302,25 @@ void feb_set_hv_voltage(double v){
   feb_cmd_write(R_FEB_HVOLT_REF_TL, tempref_li);
   daqb_wait_for_ack_cnt(last_ack_cnt);
 
+  char hv_checksum = 0x00ff && (   0x0e +
+                                   ((hvset_hi>>8)&0xff) + (hvset_hi&0xff) +
+                                   ((hvset_li>>8)&0xff) + (hvset_li&0xff) +
+                                   ((tempref_hi>>8)&0xff) + (tempref_hi&0xff) +
+                                   ((tempref_li>>8)&0xff) + (tempref_li&0xff) );
+
+  std::string hv_checksum_s = CStringToHexString(&hv_checksum, 1);
+  std::printf("hvolt conf CHECKSUM: SUM %#06x\n,  HEX 0X%s ", (uint16_t(uint8_t(hv_checksum))), hv_checksum_s.c_str());
+  uint16_t hv_checksum_i = ((uint16_t(uint8_t(hv_checksum_s[0])))<<8) + (uint16_t(uint8_t(hv_checksum_s[1])));
+  std::printf("hvolt conf CHECKSUM:  %#06x\n", hv_checksum_i);
+
+  last_ack_cnt = daqb_read_last_ack_cnt();
+  feb_cmd_write(R_FEB_HVOLT_CHECKSUM, hv_checksum_i);
+  daqb_wait_for_ack_cnt(last_ack_cnt);
 
 
-  //todo
-  // uint16_t hv_checksum=0;
-  // last_ack_cnt = daqb_read_last_ack_cnt();
-  // feb_cmd_write(R_FEB_HVOLT_CHECKSUM, hv_checksum);
-  // daqb_wait_for_ack_cnt(last_ack_cnt);
-
-
-  // last_ack_cnt = daqb_read_last_ack_cnt();
-  // feb_cmd_write(R_FEB_HVOLT_CONF_PUSH, 1);
-  // daqb_wait_for_ack_cnt(last_ack_cnt);
+  last_ack_cnt = daqb_read_last_ack_cnt();
+  feb_cmd_write(R_FEB_HVOLT_CONF_PUSH, 1);
+  daqb_wait_for_ack_cnt(last_ack_cnt);
 
 }
 
@@ -376,7 +383,7 @@ Usage:
 static  const std::string help_usage_linenoise
 (R"(
 
-keyword: help, print, init, reset, quit, daqb, feb, set, get, cmd, hvolt, dac, temp, asic, raw, volt
+keyword: help, print, init, reset, quit, daqb, feb, set, get, hvolt, dac, temp, asic, raw
 example:
   1) quit command line
    > quit
@@ -440,7 +447,7 @@ int main(int argc, char **argv){
   linenoiseSetCompletionCallback([](const char* prefix, linenoiseCompletions* lc)
                                  {
                                    static const char* examples[] =
-                                     {"help", "print", "init", "reset", "quit", "exit", "daqb", "feb", "set", "get", "cmd", "hvolt", "dac", "temp", "asic", "raw", "volt",
+                                     {"help", "print", "init", "reset", "quit", "exit", "daqb", "feb", "set", "get", "hvolt", "dac", "temp", "asic", "raw",
                                       NULL};
                                    size_t i;
                                    for (i = 0;  examples[i] != NULL; ++i) {
@@ -499,11 +506,11 @@ int main(int argc, char **argv){
     else if ( std::regex_match(result, std::regex("\\s*(hvolt)\\s+(get)\\s*")) ){
       feb_read_hv();
     }
-    else if ( std::regex_match(result, std::regex("\\s*(dac)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
+    else if ( std::regex_match(result, std::regex("\\s*(dac)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+([0-9\\.]+)\\s*")) ){
       std::cmatch mt;
-      std::regex_match(result, mt, std::regex("\\s*(dac)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*"));
+      std::regex_match(result, mt, std::regex("\\s*(dac)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+([0-9\\.]+)\\s*"));
       uint64_t ch = std::stoull(mt[4].str(), 0, mt[3].str().empty()?10:16);
-      uint64_t voltage = std::stoull(mt[6].str(), 0, mt[5].str().empty()?10:16);
+      double voltage = std::stod(mt[5].str());
       feb_set_dac_voltage(ch, voltage);
     }
     else if ( std::regex_match(result, std::regex("\\s*(asic)\\s+(set)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
@@ -513,10 +520,10 @@ int main(int argc, char **argv){
       uint64_t data = std::stoull(mt[7].str(), 0, mt[6].str().empty()?10:16);
       feb_set_asic_raw(ch, data);
     }
-    else if ( std::regex_match(result, std::regex("\\s*(hvolt)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
+    else if ( std::regex_match(result, std::regex("\\s*(hvolt)\\s+(set)\\s+([0-9\\.]+)\\s*")) ){
       std::cmatch mt;
-      std::regex_match(result, mt, std::regex("\\s*(hvolt)\\s+(set)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*"));
-      uint64_t voltage = std::stoull(mt[4].str(), 0, mt[3].str().empty()?10:16);
+      std::regex_match(result, mt, std::regex("\\s*(hvolt)\\s+(set)\\s+([0-9\\.]+)\\s*"));
+      double voltage = std::stod(mt[3].str());
       std::printf("Warning: not yet finished, no checksum\n");
       feb_set_hv_voltage(voltage);
     }
