@@ -302,7 +302,7 @@ void feb_set_hv_voltage(double v){
   feb_cmd_write(R_FEB_HVOLT_REF_TL, tempref_li);
   daqb_wait_for_ack_cnt(last_ack_cnt);
 
-  char hv_checksum = 0x00ff && (   0x0e +
+  char hv_checksum = 0x00ff & (   0x0e +
                                    ((hvset_hi>>8)&0xff) + (hvset_hi&0xff) +
                                    ((hvset_li>>8)&0xff) + (hvset_li&0xff) +
                                    ((tempref_hi>>8)&0xff) + (tempref_hi&0xff) +
