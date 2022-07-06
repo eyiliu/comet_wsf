@@ -314,16 +314,16 @@ Usage:
   -exitTime       <n>          exit after n seconds (0=NoLimit, default 10)
 examples:
 #1. save data and print
-testdump -rawPrint -rawFile test.dat
+comet_wsf_datadump -rawPrint -rawFile test.dat
 
 #2. save data only
-testdump -rawFile test.dat
+comet_wsf_datadump -rawFile test.dat
 
 #3. print only
-testdump -rawPrint
+comet_wsf_datadump -rawPrint
 
 #4. print, exit after 60 seconds
-testdump -rawPrint -exitTime 60
+comet_wsf_datadump -rawPrint -exitTime 60
 
 )";
 
