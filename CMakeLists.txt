@@ -58,16 +58,18 @@ set(CMAKE_THREAD_PREFER_PTHREAD ON)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-
 add_subdirectory(getopt)
 add_subdirectory(linenoiseng)
 
+add_executable(comet_wsf_ctrl comet_wsf_ctrl.cc)
+target_link_libraries(comet_wsf_ctrl PRIVATE getopt linenoiseng)
 
-add_executable(comet_wsf_main comet_wsf.cc)
-target_link_libraries(comet_wsf_main PRIVATE getopt linenoiseng)
+add_executable(comet_wsf_datadump comet_wsf_datadump.cc)
+target_link_libraries(comet_wsf_datadump PRIVATE getopt linenoiseng
+  Threads::Threads
+  $<$<AND:$<CXX_COMPILER_ID:GNU>,$<AND:$<VERSION_LESS:$<CXX_COMPILER_VERSION>,9.0>,$<VERSION_GREATER:$<CXX_COMPILER_VERSION>,5.3>>>:stdc++fs>)
 
-
-install(TARGETS comet_wsf_main
+install(TARGETS comet_wsf_ctrl comet_wsf_datadump
   EXPORT ${PROJECT_NAME}Targets
   RUNTIME       DESTINATION bin      COMPONENT runtime
   LIBRARY       DESTINATION lib      COMPONENT runtime
@@ -75,9 +77,6 @@ install(TARGETS comet_wsf_main
   PUBLIC_HEADER DESTINATION include  COMPONENT devel
   RESOURCE      DESTINATION resource COMPONENT runtime
   )
-
-
-
 
 ## install-tree
 # set(CONF_INCLUDE_DIRS "\${CMAKE_CURRENT_LIST_DIR}/../include")
