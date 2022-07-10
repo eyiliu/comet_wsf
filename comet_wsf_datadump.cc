@@ -132,6 +132,10 @@ namespace{
     int read_len_real = 0;
     while(size_filled < size_buf){
       read_len_real = read(fd_rx, &buf[size_filled], size_buf-size_filled);
+      // if(read_len_real>0){//for debugging print 
+      //   std::string str_new(&buf[size_filled],  read_len_real);
+      //   std::fprintf(stdout, "RawData_RX new buffer: %s\n", binToHexString(str_new).c_str());
+      // }
       if(read_len_real>0){
         size_filled += read_len_real;
         can_time_out = false;
@@ -148,8 +152,8 @@ namespace{
               return std::string();
             }
             std::fprintf(stderr, "ERROR<%s>: timeout error of incomplete data reading \n", __func__ );
-	    std::fprintf(stderr, "=");
-	    return std::string();
+            std::fprintf(stderr, "=");
+            return std::string();
           }
         }
         continue;
@@ -163,142 +167,6 @@ namespace{
     return buf;
   }
 
-  void fromRaw(const std::string &raw){
-    const uint8_t* p_raw_beg = reinterpret_cast<const uint8_t *>(raw.data());
-    const uint8_t* p_raw = p_raw_beg;
-    if(raw.size()<16){
-      std::fprintf(stderr, "raw data length is less than 16\n");
-      throw;
-    }
-    if( *p_raw_beg!=0x5a){
-      std::fprintf(stderr, "package header/trailer mismatch, head<%hhu>\n", *p_raw_beg);
-      throw;
-    }
-
-    p_raw++; //header 
-    p_raw++; //resv
-    p_raw++; //resv
-
-    uint8_t deviceId = *p_raw;
-    debug_print(">>deviceId %hhu\n", deviceId);
-    p_raw++; //deviceId
-
-    uint32_t len_payload_data = *reinterpret_cast<const uint32_t*>(p_raw) & 0x00ffffff;
-    uint32_t len_pack_expected = (len_payload_data + 16) & -4;
-    if( len_pack_expected  != raw.size()){
-      std::fprintf(stderr, "raw data length does not match to package size\n");
-      std::fprintf(stderr, "payload_len = %u,  package_size = %zu\n",
-                   len_payload_data, raw.size());
-      throw;
-    }
-    p_raw += 4;
-
-    uint32_t triggerId = *reinterpret_cast<const uint16_t*>(p_raw);
-    debug_print(">>triggerId %u\n", triggerId);
-    p_raw += 4;
-
-    const uint8_t* p_payload_end = p_raw_beg + 12 + len_payload_data -1;
-    if( *(p_payload_end+1) != 0xa5 ){
-      std::fprintf(stderr, "package header/trailer mismatch, trailer<%hu>\n", *(p_payload_end+1) );
-      throw;
-    }
-
-    uint8_t l_frame_n = -1;
-    uint8_t l_region_id = -1;
-    while(p_raw <= p_payload_end){
-      char d = *p_raw;
-      if(d & 0b10000000){
-        debug_print("//1     NOT DATA\n");
-        if(d & 0b01000000){
-          debug_print("//11    EMPTY or REGION HEADER or BUSY_ON/OFF\n");
-          if(d & 0b00100000){
-            debug_print("//111   EMPTY or BUSY_ON/OFF\n");
-            if(d & 0b00010000){
-              debug_print("//1111  BUSY_ON/OFF\n");
-              p_raw++;
-              continue;
-            }
-            debug_print("//1110  EMPTY\n");
-            uint8_t chip_id = d & 0b00001111;
-            l_frame_n++;
-            p_raw++;
-            d = *p_raw;
-            uint8_t bunch_counter_h = d;
-            p_raw++;
-            continue;
-          }
-          debug_print("//110   REGION HEADER\n");
-          l_region_id = d & 0b00011111;
-          debug_print(">>region_id %hhu\n", l_region_id);
-          p_raw++;
-          continue;
-        }
-        debug_print("//10    CHIP_HEADER/TRAILER or UNDEFINED\n");
-        if(d & 0b00100000){
-          debug_print("//101   CHIP_HEADER/TRAILER\n");
-          if(d & 0b00010000){
-            debug_print("//1011  TRAILER\n");
-            uint8_t readout_flag= d & 0b00001111;
-            p_raw++;
-            continue;
-          }
-          debug_print("//1010  HEADER\n");
-          uint8_t chip_id = d & 0b00001111;
-          l_frame_n++;
-          p_raw++;
-          d = *p_raw;
-          uint8_t bunch_counter_h = d;
-          p_raw++;
-          continue;
-        }
-        debug_print("//100   UNDEFINED\n");
-        p_raw++;
-        continue;
-      }
-      else{
-        debug_print("//0     DATA\n");
-        if(d & 0b01000000){
-          debug_print("//01    DATA SHORT\n"); // 2 bytes
-          uint8_t encoder_id = (d & 0b00111100)>> 2;
-          uint16_t addr = (d & 0b00000011)<<8;
-          p_raw++;
-          d = *p_raw;
-          addr += *p_raw;
-          p_raw++;
-
-          uint16_t y = addr>>1;
-          uint16_t x = (l_region_id<<5)+(encoder_id<<1)+((addr&0b1)!=((addr>>1)&0b1));
-          std::fprintf(stdout, "[%hu, %hu, %hhu]\n", x, y, deviceId);
-          continue;
-        }
-        debug_print("//00    DATA LONG\n"); // 3 bytes
-        uint8_t encoder_id = (d & 0b00111100)>> 2;
-        uint16_t addr = (d & 0b00000011)<<8;
-        p_raw++;
-        d = *p_raw;
-        addr += *p_raw;
-        p_raw++;
-        d = *p_raw;
-        uint8_t hit_map = (d & 0b01111111);
-        p_raw++;
-        uint16_t y = addr>>1;
-        uint16_t x = (l_region_id<<5)+(encoder_id<<1)+((addr&0b1)!=((addr>>1)&0b1));
-        debug_print("[%hu, %hu, %hhu] ", x, y, deviceId);
-
-        for(int i=1; i<=7; i++){
-          if(hit_map & (1<<(i-1))){
-            uint16_t addr_l = addr + i;
-            uint16_t y = addr_l>>1;
-            uint16_t x = (l_region_id<<5)+(encoder_id<<1)+((addr_l&0b1)!=((addr_l>>1)&0b1));
-            debug_print("[%hu, %hu, %hhu] ", x, y, deviceId);
-          }
-        }
-        debug_print("\n");
-        continue;
-      }
-    }
-    return;
-  }
 }
 
 
@@ -482,12 +350,23 @@ int main(int argc, char *argv[]) {
       std::fprintf(stdout, "Data reveving timeout\n");
       continue;
     }
-    if(do_rawPrint){
+    if(df_pack.size()!=8){
+      std::fprintf(stderr, "Error Package size is not 8 bytes.\n");
+      throw;
+    }
+    if(do_rawPrint ){
       std::fprintf(stdout, "RawData_RX:\n%s\n", binToHexString(df_pack).c_str());
-      //fromRaw(df_pack);
+      const uint8_t* ppack = reinterpret_cast<const uint8_t *>(df_pack.data());
+      uint8_t wireN = ( ((*ppack)&0x0f) << 4) | ( ((*(ppack+1)) & 0xf0)>>4 );
+      uint16_t hitN  = ( ((uint16_t)(*(ppack+1) & 0x0f)) << 12) |
+        (((uint16_t)(*(ppack+2)))<<4) | (((uint16_t)(*(ppack+3)) & 0xf0 )>>4);
+      uint64_t timeV  = ( ((uint64_t)(*(ppack+3) & 0x0f)) << 32) |
+        (((uint32_t)(*(ppack+4)))<<24) | (((uint32_t)(*(ppack+5)))<<16) |
+        (((uint32_t)(*(ppack+6)))<<8) |   ((uint32_t)(*(ppack+7)));
+
+      std::fprintf(stdout, "Pack decode: [WireN %hhu, HitN %hu, TimeV %llu] \n", wireN, hitN, timeV);
       std::fflush(stdout);
     }
-
     if(fp){
       std::fwrite(df_pack.data(), 1, df_pack.size(), fp);
       std::fflush(fp);
