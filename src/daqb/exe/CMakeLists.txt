@@ -1,6 +1,5 @@
-
 add_executable(comet_wsf_ctrl comet_wsf_ctrl.cc)
-target_link_libraries(comet_wsf_ctrl PRIVATE getopt linenoiseng)
+target_link_libraries(comet_wsf_ctrl PRIVATE comet_wsf_daqb getopt linenoiseng)
 
 add_executable(comet_wsf_datadump comet_wsf_datadump.cc)
 target_link_libraries(comet_wsf_datadump PRIVATE getopt linenoiseng
