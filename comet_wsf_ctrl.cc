@@ -39,7 +39,6 @@
   do { if (INFO_PRINT) std::fprintf(stdout, fmt, ##__VA_ARGS__); } while (0)
 
 
-
 using std::int8_t;
 using std::int16_t;
 using std::int32_t;
@@ -260,7 +259,7 @@ double feb_read_hv(){
 
 
 void feb_set_hv_voltage(double v){
-  uint16_t hvseti = lrint(v/U_HVOLT_V_PER);
+  uint16_t hvseti = abs(v/U_HVOLT_V_PER);
   std::printf("hvolt conf voltage:  %f / U_HVOLT_V_PER  = %u, hex %#06x \n", v, hvseti, hvseti);
 
   char hvset_h = ((hvseti>>8) & 0x00ff);
@@ -283,7 +282,7 @@ void feb_set_hv_voltage(double v){
 
   std::printf("hvolt reading new temp\n");
   double temp = feb_read_new_temp();
-  uint16_t tempref_div = lrint( (1.035+ (temp*(-0.0055)))/0.00001907 );
+  uint16_t tempref_div = abs( (1.035+ (temp*(-0.0055)))/0.00001907 );
   std::printf("hvolt conf tempref:  (1.035+ ( %f *(-0.0055)))/0.00001907) = %u, hex %#06x \n", temp, tempref_div, tempref_div);
 
   char tempref_h = ((tempref_div>>8) & 0x00ff);
@@ -326,7 +325,7 @@ void feb_set_hv_voltage(double v){
 
 
 void feb_set_dac_voltage(uint32_t ch, double v){
-  uint32_t v_raw = lrint(v/U_DAC_V_PER);
+  uint32_t v_raw = abs(v/U_DAC_V_PER);
   uint32_t data_raw = ((ch & 0xf) << 12) + (v_raw & 0xfff);
 
   uint32_t last_ack_cnt;
@@ -364,10 +363,7 @@ void feb_set_asic_raw(uint32_t ch, uint16_t data){
     feb_cmd_write(R_FEB_ASIC1_CONF_PUSH, 1);
   }
   daqb_wait_for_ack_cnt(last_ack_cnt);
-
 }
-
-
 
 
 static  const std::string help_usage
@@ -383,7 +379,7 @@ Usage:
 static  const std::string help_usage_linenoise
 (R"(
 
-keyword: help, print, init, reset, quit, daqb, feb, set, get, hvolt, dac, temp, asic, raw
+keyword: help, print, reset, conf, start, stop, quit, daqb, feb, set, get, hvolt, dac, temp, asic, raw
 example:
   1) quit command line
    > quit
@@ -411,6 +407,18 @@ example:
 
   9) set&push FEB HVOLT module Voltage
    > hvolt set [nVolt]
+
+  10) reset FEB and DAQB
+   > reset
+
+  11) set&push default configure to FEB
+   > conf
+
+  12) start data taking
+   > start
+
+  13) stop data taking
+   > stop
 )"
  );
 
@@ -430,7 +438,6 @@ int main(int argc, char **argv){
     }
   }
 
-
   off_t addrbase_phy = R_DAQB_PBASE;
   int fd = 0;
   pR_DAQB_VBASE32 = 0;
@@ -447,7 +454,7 @@ int main(int argc, char **argv){
   linenoiseSetCompletionCallback([](const char* prefix, linenoiseCompletions* lc)
                                  {
                                    static const char* examples[] =
-                                     {"help", "print", "init", "reset", "quit", "exit", "daqb", "feb", "set", "get", "hvolt", "dac", "temp", "asic", "raw",
+                                     {"help", "print", "reset", "conf", "start", "stop", "quit", "exit", "daqb", "feb", "set", "get", "hvolt", "dac", "temp", "asic", "raw",
                                       NULL};
                                    size_t i;
                                    for (i = 0;  examples[i] != NULL; ++i) {
@@ -473,12 +480,31 @@ int main(int argc, char **argv){
       break;
     }
     else if ( std::regex_match(result, std::regex("\\s*(reset)\\s*")) ){
-      printf("reset TODO\n");
-      //TODO
+      printf("reset\n");
+      feb_cmd_write(R_FEB_RESET,1);
+      daqb_reg_write(R_DAQB_DATA_RESET,1);
     }
-    else if ( std::regex_match(result, std::regex("\\s*(init)\\s*")) ){
-      printf("init TODO\n");
-      //TODO
+    else if ( std::regex_match(result, std::regex("\\s*(conf)\\s*")) ){
+      printf("conf\n");
+      feb_set_dac_voltage(0, 1);
+      feb_set_dac_voltage(1, 1);
+      feb_set_dac_voltage(2, 0);
+      feb_set_dac_voltage(3, 0);
+      feb_set_dac_voltage(4, 2.3);
+      feb_set_dac_voltage(5, 2.3);
+      feb_set_dac_voltage(6, 1);
+      feb_set_dac_voltage(7, 1);
+      feb_set_hv_voltage(54);
+    }
+    else if ( std::regex_match(result, std::regex("\\s*(start)\\s*")) ){
+      printf("start\n");
+      daqb_reg_write(R_DAQB_DATA_RUN, 1);
+      feb_cmd_write(R_FEB_DATA_RUN, 1);
+    }
+    else if ( std::regex_match(result, std::regex("\\s*(stop)\\s*")) ){
+      printf("stop\n");
+      feb_cmd_write(R_FEB_DATA_RUN, 1);
+      daqb_reg_write(R_DAQB_DATA_RUN, 0);
     }
     else if ( std::regex_match(result, std::regex("\\s*(daqb)\\s+(set)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
       std::cmatch mt;
