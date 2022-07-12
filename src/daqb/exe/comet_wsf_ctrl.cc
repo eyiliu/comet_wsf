@@ -70,7 +70,7 @@ example:
   10) reset FEB and DAQB
    > reset
 
-  11) set&push default configure to FEB
+  11) set&push default configure to FEB (DAC, HVOLT)
    > conf
 
   12) start data taking
@@ -137,30 +137,19 @@ int main(int argc, char **argv){
     }
     else if ( std::regex_match(result, std::regex("\\s*(reset)\\s*")) ){
       printf("reset\n");
-      regctrl->feb_cmd_write(R_FEB_RESET,1);
-      regctrl->daqb_reg_write(R_DAQB_DATA_RESET,1);
+      regctrl->daq_reset();
     }
     else if ( std::regex_match(result, std::regex("\\s*(conf)\\s*")) ){
       printf("conf\n");
-      regctrl->feb_set_dac_voltage(0, 1);
-      regctrl->feb_set_dac_voltage(1, 1);
-      regctrl->feb_set_dac_voltage(2, 0);
-      regctrl->feb_set_dac_voltage(3, 0);
-      regctrl->feb_set_dac_voltage(4, 2.3);
-      regctrl->feb_set_dac_voltage(5, 2.3);
-      regctrl->feb_set_dac_voltage(6, 1);
-      regctrl->feb_set_dac_voltage(7, 1);
-      regctrl->feb_set_hv_voltage(54);
+      regctrl->daq_conf_default();
     }
     else if ( std::regex_match(result, std::regex("\\s*(start)\\s*")) ){
       printf("start\n");
-      regctrl->daqb_reg_write(R_DAQB_DATA_RUN, 1);
-      regctrl->feb_cmd_write(R_FEB_DATA_RUN, 1);
+      regctrl->daq_start_run();
     }
     else if ( std::regex_match(result, std::regex("\\s*(stop)\\s*")) ){
       printf("stop\n");
-      regctrl->feb_cmd_write(R_FEB_DATA_RUN, 1);
-      regctrl->daqb_reg_write(R_DAQB_DATA_RUN, 0);
+      regctrl->daq_stop_run();
     }
     else if ( std::regex_match(result, std::regex("\\s*(daqb)\\s+(set)\\s+(raw)\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s+(?:(0[Xx])?([0-9a-fA-F]+))\\s*")) ){
       std::cmatch mt;

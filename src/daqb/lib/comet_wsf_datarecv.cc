@@ -129,7 +129,6 @@ namespace comet_wsf{
     return buf;
   }
 
-
   comet_datarecv::comet_datarecv(){
     std::fprintf(stdout, " connecting to %s\n", "/dev/axidmard");
     fd_rx = open("/dev/axidmard", O_RDONLY | O_NONBLOCK);
@@ -140,7 +139,6 @@ namespace comet_wsf{
     std::fprintf(stdout, " connected\n");
   }
 
-
   comet_datarecv::~comet_datarecv(){
     close(fd_rx);
   }
@@ -149,4 +147,26 @@ namespace comet_wsf{
     return readPack(fd_rx, timeout_idel);
   }
 
+  std::tuple<uint8_t, uint8_t, uint16_t, uint64_t> comet_datarecv::decode_pack(std::string &raw){
+    uint8_t headM  = 0;
+    uint8_t wireN = 0;
+    uint16_t hitN = 0;
+    uint64_t timeV = 0;
+
+    if(raw.size()!=8){
+      headM = 0xff;
+      //something wrong.
+    }
+    else{
+      const uint8_t* ppack = reinterpret_cast<const uint8_t *>(raw.data());
+      headM = ((*ppack) & 0xf0)>>4 ;
+      wireN = ( ((*ppack)&0x0f) << 4) | ( ((*(ppack+1)) & 0xf0)>>4 );
+      hitN  = ( ((uint16_t)(*(ppack+1) & 0x0f)) << 12) |
+        (((uint16_t)(*(ppack+2)))<<4) | (((uint16_t)(*(ppack+3)) & 0xf0 )>>4);
+      timeV  = ( ((uint64_t)(*(ppack+3) & 0x0f)) << 32) |
+        (((uint32_t)(*(ppack+4)))<<24) | (((uint32_t)(*(ppack+5)))<<16) |
+        (((uint32_t)(*(ppack+6)))<<8) |   ((uint32_t)(*(ppack+7)));
+    }
+    return std::make_tuple(headM, wireN, hitN, timeV);
+  }
 }

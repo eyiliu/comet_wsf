@@ -170,7 +170,7 @@ namespace comet_wsf{
         std::printf("timetout: last ack cnt %#010x,  %#010x \n", last_cnt, cnt_new);
         throw;
       }
-      std::this_thread::sleep_for(100ms);
+      std::this_thread::sleep_for(20ms);
       cnt_new = daqb_reg_read(R_DAQB_CMD_ACK);
     }
   }
@@ -329,4 +329,54 @@ namespace comet_wsf{
     }
     daqb_wait_for_ack_cnt(last_ack_cnt);
   }
+
+  void comet_regctrl::daq_start_run(){
+    daqb_reg_write(R_DAQB_DATA_RUN, 1);
+
+    uint32_t last_ack_cnt;
+    last_ack_cnt = daqb_read_last_ack_cnt();
+    feb_cmd_write(R_FEB_DATA_RUN, 1);
+    daqb_wait_for_ack_cnt(last_ack_cnt);
+  }
+
+
+  void comet_regctrl::daq_stop_run(){
+    uint32_t last_ack_cnt;
+    last_ack_cnt = daqb_read_last_ack_cnt();
+    feb_cmd_write(R_FEB_DATA_RUN, 1);
+    daqb_wait_for_ack_cnt(last_ack_cnt);
+
+    daqb_reg_write(R_DAQB_DATA_RUN, 0);
+  }
+
+  void comet_regctrl::daq_reset(){
+    uint32_t last_ack_cnt;
+    last_ack_cnt = daqb_read_last_ack_cnt();
+    feb_cmd_write(R_FEB_RESET,1);
+    daqb_wait_for_ack_cnt(last_ack_cnt);
+
+    daqb_reg_write(R_DAQB_DATA_RESET,1);
+    std::this_thread::sleep_for(100ms);
+  }
+
+  void comet_regctrl::daq_conf_default(){
+
+    std::vector<double>default_dac_v= {1, 1, 0, 0, 2.3, 2.3, 1, 1};
+    double default_hvolt_v= 54;
+    std::printf("conf default: DAC [%f, %f, %f, %f, %f, %f, %f, %f] Volt ,  HVOLT [%f] Volt \n",
+                default_dac_v[0],default_dac_v[1],default_dac_v[2],default_dac_v[3],
+                default_dac_v[4],default_dac_v[5],default_dac_v[6],default_dac_v[7],
+                default_hvolt_v);
+
+    feb_set_dac_voltage(0, default_dac_v[0]);
+    feb_set_dac_voltage(1, default_dac_v[1]);
+    feb_set_dac_voltage(2, default_dac_v[2]);
+    feb_set_dac_voltage(3, default_dac_v[3]);
+    feb_set_dac_voltage(4, default_dac_v[4]);
+    feb_set_dac_voltage(5, default_dac_v[5]);
+    feb_set_dac_voltage(6, default_dac_v[6]);
+    feb_set_dac_voltage(7, default_dac_v[7]);
+    feb_set_hv_voltage(54);
+  }
+
 }

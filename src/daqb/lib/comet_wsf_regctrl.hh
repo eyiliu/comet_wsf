@@ -20,6 +20,11 @@ namespace comet_wsf{
     void feb_set_dac_voltage(uint32_t ch, double v);
     void feb_set_asic_raw(uint32_t ch, uint16_t data);
 
+    void daq_start_run();
+    void daq_stop_run();
+    void daq_reset();
+    void daq_conf_default();
+
   private:
     uint32_t *pR_DAQB_VBASE32{nullptr};
     int fd{0};

@@ -233,15 +233,12 @@ int main(int argc, char *argv[]) {
     }
     if(do_rawPrint ){
       std::fprintf(stdout, "RawData_RX:\n%s\n", comet_wsf::comet_datarecv::binToHexString(df_pack).c_str());
-      const uint8_t* ppack = reinterpret_cast<const uint8_t *>(df_pack.data());
-      uint8_t wireN = ( ((*ppack)&0x0f) << 4) | ( ((*(ppack+1)) & 0xf0)>>4 );
-      uint16_t hitN  = ( ((uint16_t)(*(ppack+1) & 0x0f)) << 12) |
-        (((uint16_t)(*(ppack+2)))<<4) | (((uint16_t)(*(ppack+3)) & 0xf0 )>>4);
-      uint64_t timeV  = ( ((uint64_t)(*(ppack+3) & 0x0f)) << 32) |
-        (((uint32_t)(*(ppack+4)))<<24) | (((uint32_t)(*(ppack+5)))<<16) |
-        (((uint32_t)(*(ppack+6)))<<8) |   ((uint32_t)(*(ppack+7)));
-
-      std::fprintf(stdout, "Pack decode: [WireN %hhu, HitN %hu, TimeV %llu] \n", wireN, hitN, timeV);
+      uint8_t headM  = 0;
+      uint8_t wireN = 0;
+      uint16_t hitN = 0;
+      uint64_t timeV = 0;
+      std::tie(headM, wireN, hitN, timeV) = comet_wsf::comet_datarecv::decode_pack(df_pack);
+      std::fprintf(stdout, "Pack decode: [headM %hhu, WireN %hhu, HitN %hu, TimeV %llu] \n", headM, wireN, hitN, timeV);
       std::fflush(stdout);
     }
     if(fp){
