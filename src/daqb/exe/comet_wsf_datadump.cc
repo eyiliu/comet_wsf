@@ -55,20 +55,23 @@ Usage:
   -help                        help message
   -verbose                     verbose flag
   -rawPrint                    print data by hex format in terminal
-  -decode                      decode the raw data
   -rawFile        <path>       path of raw file to save
+  -hitFile        <path>       path of hit file to save
   -exitTime       <n>          exit after n seconds (0=NoLimit, default 10)
 examples:
-#1. save data and print
+#1. save raw data and print
 comet_wsf_datadump -rawPrint -rawFile test.dat
 
-#2. save data only
-comet_wsf_datadump -rawFile test.dat
+#2. save raw data only
+comet_wsf_datadump -rawFile rawData.dat
 
-#3. print only
+#3. save hit data only
+comet_wsf_datadump -hitFile hitData.dat
+
+#4. print only
 comet_wsf_datadump -rawPrint
 
-#4. print, exit after 60 seconds
+#5. print, exit after 60 seconds
 comet_wsf_datadump -rawPrint -exitTime 60
 
 )";
@@ -76,18 +79,17 @@ comet_wsf_datadump -rawPrint -exitTime 60
 int main(int argc, char *argv[]) {
   signal(SIGINT, [](int){g_done+=1;});
 
-  std::string rawFilePath;
+  std::string rawFilePath, hitFilePath;
   std::string ipAddressStr;
   int exitTimeSecond = 10;
   bool do_rawPrint = false;
-  bool do_decode = false;
   int do_verbose = 0;
   {////////////getopt begin//////////////////
     struct option longopts[] = {{"help",      no_argument, NULL, 'h'},//option -W is reserved by getopt
                                 {"verbose",   no_argument, NULL, 'v'},//val
-                                {"decode",    no_argument, NULL, 'd'},
                                 {"rawPrint",  no_argument, NULL, 's'},
                                 {"rawFile",   required_argument, NULL, 'f'},
+                                {"hitFile",   required_argument, NULL, 'd'},
                                 {"exitTime",  required_argument, NULL, 'e'},
                                 {0, 0, 0, 0}};
 
@@ -107,14 +109,14 @@ int main(int argc, char *argv[]) {
       case 'f':
         rawFilePath = optarg;
         break;
+      case 'd':
+        hitFilePath = optarg;
+        break;
       case 'e':
         exitTimeSecond = std::stoi(optarg);
         break;
       case 's':
         do_rawPrint = true;
-        break;
-      case 'd':
-        do_decode = true;
         break;
         // help and verbose
       case 'v':
@@ -165,44 +167,92 @@ int main(int argc, char *argv[]) {
   std::fprintf(stdout, "\n");
   std::fprintf(stdout, "rawPrint:  %d\n", do_rawPrint);
   std::fprintf(stdout, "rawFile:   %s\n", rawFilePath.c_str());
+  std::fprintf(stdout, "hitFile:   %s\n", hitFilePath.c_str());
   std::fprintf(stdout, "\n");
 
   std::FILE *fp = nullptr;
-  if(!rawFilePath.empty()){
-    std::filesystem::path filepath(rawFilePath);
-    std::filesystem::path path_dir_output = std::filesystem::absolute(filepath).parent_path();
-    std::filesystem::file_status st_dir_output =
-      std::filesystem::status(path_dir_output);
-    if (!std::filesystem::exists(st_dir_output)) {
-      std::fprintf(stdout, "Output folder does not exist: %s\n\n",
-                   path_dir_output.c_str());
-      std::filesystem::file_status st_parent =
-        std::filesystem::status(path_dir_output.parent_path());
-      if (std::filesystem::exists(st_parent) &&
-          std::filesystem::is_directory(st_parent)) {
-        if (std::filesystem::create_directory(path_dir_output)) {
-          std::fprintf(stdout, "Create output folder: %s\n\n", path_dir_output.c_str());
+  {
+    if(!rawFilePath.empty()){
+      std::filesystem::path filepath(rawFilePath);
+      std::filesystem::path path_dir_output = std::filesystem::absolute(filepath).parent_path();
+      std::filesystem::file_status st_dir_output =
+        std::filesystem::status(path_dir_output);
+      if (!std::filesystem::exists(st_dir_output)) {
+        std::fprintf(stdout, "Output folder does not exist: %s\n\n",
+                     path_dir_output.c_str());
+        std::filesystem::file_status st_parent =
+          std::filesystem::status(path_dir_output.parent_path());
+        if (std::filesystem::exists(st_parent) &&
+            std::filesystem::is_directory(st_parent)) {
+          if (std::filesystem::create_directory(path_dir_output)) {
+            std::fprintf(stdout, "Create output folder: %s\n\n", path_dir_output.c_str());
+          } else {
+            std::fprintf(stderr, "Unable to create folder: %s\n\n", path_dir_output.c_str());
+            throw;
+          }
         } else {
           std::fprintf(stderr, "Unable to create folder: %s\n\n", path_dir_output.c_str());
           throw;
         }
-      } else {
-        std::fprintf(stderr, "Unable to create folder: %s\n\n", path_dir_output.c_str());
+      }
+
+      std::filesystem::file_status st_file = std::filesystem::status(filepath);
+      if (std::filesystem::exists(st_file)) {
+        std::fprintf(stderr, "File < %s > exists.\n\n", filepath.c_str());
+        throw;
+      }
+
+      fp = std::fopen(filepath.c_str(), "w");
+      if (!fp) {
+        std::fprintf(stderr, "File opening failed: %s \n\n", filepath.c_str());
         throw;
       }
     }
+  }
 
-    std::filesystem::file_status st_file = std::filesystem::status(filepath);
-    if (std::filesystem::exists(st_file)) {
-      std::fprintf(stderr, "File < %s > exists.\n\n", filepath.c_str());
-      throw;
-    }
 
-    fp = std::fopen(filepath.c_str(), "w");
-    if (!fp) {
-      std::fprintf(stderr, "File opening failed: %s \n\n", filepath.c_str());
-      throw;
+  std::FILE *fp_hit = nullptr;
+  {
+    if(!hitFilePath.empty()){
+      std::filesystem::path filepath(hitFilePath);
+      std::filesystem::path path_dir_output = std::filesystem::absolute(filepath).parent_path();
+      std::filesystem::file_status st_dir_output =
+        std::filesystem::status(path_dir_output);
+      if (!std::filesystem::exists(st_dir_output)) {
+        std::fprintf(stdout, "Output folder does not exist: %s\n\n",
+                     path_dir_output.c_str());
+        std::filesystem::file_status st_parent =
+          std::filesystem::status(path_dir_output.parent_path());
+        if (std::filesystem::exists(st_parent) &&
+            std::filesystem::is_directory(st_parent)) {
+          if (std::filesystem::create_directory(path_dir_output)) {
+            std::fprintf(stdout, "Create output folder: %s\n\n", path_dir_output.c_str());
+          } else {
+            std::fprintf(stderr, "Unable to create folder: %s\n\n", path_dir_output.c_str());
+            throw;
+          }
+        } else {
+          std::fprintf(stderr, "Unable to create folder: %s\n\n", path_dir_output.c_str());
+          throw;
+        }
+      }
+
+      std::filesystem::file_status st_file = std::filesystem::status(filepath);
+      if (std::filesystem::exists(st_file)) {
+        std::fprintf(stderr, "File < %s > exists.\n\n", filepath.c_str());
+        throw;
+      }
+
+      fp_hit = std::fopen(filepath.c_str(), "w");
+      if (!fp_hit) {
+        std::fprintf(stderr, "File opening failed: %s \n\n", filepath.c_str());
+        throw;
+      }
     }
+  }
+
+  if(fp_hit){
+    std::fprintf(fp_hit, "wireN    hitN    timeV\n");
   }
 
   std::unique_ptr<comet_wsf::comet_datarecv> recv;
@@ -231,20 +281,29 @@ int main(int argc, char *argv[]) {
       std::fprintf(stderr, "Error Package size is not 8 bytes.\n");
       throw;
     }
+    uint8_t headM  = 0;
+    uint8_t wireN = 0;
+    uint16_t hitN = 0;
+    uint64_t timeV = 0;
+    std::tie(headM, wireN, hitN, timeV) = comet_wsf::comet_datarecv::decode_pack(df_pack);
+
     if(do_rawPrint ){
       std::fprintf(stdout, "RawData_RX:\n%s\n", comet_wsf::comet_datarecv::binToHexString(df_pack).c_str());
-      uint8_t headM  = 0;
-      uint8_t wireN = 0;
-      uint16_t hitN = 0;
-      uint64_t timeV = 0;
-      std::tie(headM, wireN, hitN, timeV) = comet_wsf::comet_datarecv::decode_pack(df_pack);
       std::fprintf(stdout, "Pack decode: [headM %hhu, WireN %hhu, HitN %hu, TimeV %llu] \n", headM, wireN, hitN, timeV);
       std::fflush(stdout);
+    }
+    if(fp_hit){
+      std::fprintf(fp_hit, "%hhu  %hu  %llu \n", wireN, hitN, timeV);
     }
     if(fp){
       std::fwrite(df_pack.data(), 1, df_pack.size(), fp);
       std::fflush(fp);
     }
+  }
+
+  if(fp_hit){
+    std::fflush(fp_hit);
+    std::fclose(fp_hit);
   }
 
   if(fp){
