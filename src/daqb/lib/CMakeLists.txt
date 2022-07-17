@@ -1,8 +1,13 @@
 set(LIB_SRC comet_wsf_regctrl.cc comet_wsf_datarecv.cc TcpServer.cc TcpConnection.cc)
 add_library(comet_wsf_daqb STATIC ${LIB_SRC})
-target_include_directories(comet_wsf_daqb
+target_link_libraries(comet_wsf_daqb
   PUBLIC
   Threads::Threads
+  msgpack
+  )
+
+target_include_directories(comet_wsf_daqb
+  PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>
   )

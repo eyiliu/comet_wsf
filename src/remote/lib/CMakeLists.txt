@@ -1,5 +1,13 @@
 set(LIB_SRC TcpConnection.cc daqb.cc)
 add_library(comet_wsf_remote STATIC ${LIB_SRC})
+
+target_link_libraries(comet_wsf_remote
+  PUBLIC
+  Threads::Threads
+  msgpack
+  )
+
+
 target_include_directories(comet_wsf_remote
   PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
